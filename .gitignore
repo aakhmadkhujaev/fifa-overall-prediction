@@ -11,3 +11,4 @@ models/
 .env
 *.pt
 *.pth
+analysis_results*.json
