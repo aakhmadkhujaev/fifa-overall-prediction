@@ -267,3 +267,35 @@ A feature is complete only when:
 **The AI agent implements. The project owner decides.**
 
 Prioritize correctness, reproducibility, maintainability, and a working end-to-end Machine Learning system over unnecessary complexity.
+
+## Development Workflow
+
+The project owner is responsible for:
+- Architecture decisions
+- Feature selection decisions
+- ML strategy
+- Model design decisions
+- Approval of major changes
+
+The AI coding agent is responsible for:
+- Implementation
+- Tests
+- Refactoring when requested
+- Debugging
+- Documentation updates
+
+Before implementing a major feature:
+1. Inspect the existing architecture.
+2. Inspect relevant modules and tests.
+3. Explain the proposed implementation.
+4. Implement only the approved scope.
+5. Run relevant tests.
+6. Report exactly what changed.
+
+Never:
+- Rewrite working modules unnecessarily.
+- Change the ML strategy without approval.
+- Invent dataset columns.
+- Invent metrics or results.
+- Commit or push without explicit approval.
+- Add dependencies without justification.
