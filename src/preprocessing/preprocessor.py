@@ -93,14 +93,26 @@ class Preprocessor:
 
         # 3. Imputation
         if self.numeric_features:
-            X_train[self.numeric_features] = self.num_imputer.fit_transform(X_train[self.numeric_features])
-            X_val[self.numeric_features] = self.num_imputer.transform(X_val[self.numeric_features])
-            X_test[self.numeric_features] = self.num_imputer.transform(X_test[self.numeric_features])
+            X_train[self.numeric_features] = np.asarray(
+                self.num_imputer.fit_transform(X_train[self.numeric_features])
+            )
+            X_val[self.numeric_features] = np.asarray(
+                self.num_imputer.transform(X_val[self.numeric_features])
+            )
+            X_test[self.numeric_features] = np.asarray(
+                self.num_imputer.transform(X_test[self.numeric_features])
+            )
 
         if self.categorical_features and all(c in X_train.columns for c in self.categorical_features):
-            X_train[self.categorical_features] = self.cat_imputer.fit_transform(X_train[self.categorical_features])
-            X_val[self.categorical_features] = self.cat_imputer.transform(X_val[self.categorical_features])
-            X_test[self.categorical_features] = self.cat_imputer.transform(X_test[self.categorical_features])
+            X_train[self.categorical_features] = np.asarray(
+                self.cat_imputer.fit_transform(X_train[self.categorical_features])
+            )
+            X_val[self.categorical_features] = np.asarray(
+                self.cat_imputer.transform(X_val[self.categorical_features])
+            )
+            X_test[self.categorical_features] = np.asarray(
+                self.cat_imputer.transform(X_test[self.categorical_features])
+            )
 
         # 4. Encoding
         X_train = self._encode_categorical(X_train)
