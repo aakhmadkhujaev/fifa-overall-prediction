@@ -12,3 +12,4 @@ models/
 *.pt
 *.pth
 analysis_results*.json
+reports/baseline_training_results.json

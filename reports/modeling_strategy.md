@@ -7,6 +7,12 @@ This document outlines the finalized modeling strategy for the FIFA Overall Rati
 - **Model Choice**: A PyTorch feedforward neural network designed for regression.
 - **Goalkeeper Strategy**: **Separate models** will be built and trained for Goalkeepers (GKs) and Outfield players, as they possess mutually exclusive critical skill sets.
 
+### V1 Population Isolation Assumption
+- Goalkeeper and outfield models are independent.
+- Grouped train/validation/test isolation is enforced within each model population.
+- The same `player_id` may occur in both populations when historical position records differ.
+- This cross-population overlap is accepted for V1 because the models are trained and evaluated independently; V1 does not claim global player-level isolation.
+
 ## 2. Feature Selection
 
 For V1, the input scope strictly prioritizes core player attributes. Correlation with `overall` does not automatically classify a feature as a leak. Features are grouped into the following categories:
