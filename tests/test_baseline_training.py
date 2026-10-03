@@ -2,12 +2,15 @@ import json
 
 import numpy as np
 import pandas as pd
+import pytest
 import torch
 
 from src.experiments import baseline_training
 from src.features.feature_engineering import (
     get_goalkeeper_features,
     get_outfield_features,
+    select_features,
+    split_gk_and_outfield,
 )
 from src.preprocessing.preprocessor import Preprocessor
 from src.training.model import FIFAOverallModel
@@ -246,6 +249,94 @@ def test_baseline_checkpoints_load_into_compatible_models(monkeypatch, tmp_path)
         assert "training_config" in checkpoint
         assert "best_epoch" in checkpoint
         assert "best_val_mae" in checkpoint
+        assert "checkpoint_metadata" in checkpoint
+
+        metadata = checkpoint["checkpoint_metadata"]
+        assert metadata["checkpoint_schema_version"] == 2
+        assert metadata["model_type"] == model_type
+        assert metadata["input_features"] == results[model_type]["input_features"]
+        expected_features = (
+            get_goalkeeper_features()
+            if model_type == "goalkeeper"
+            else get_outfield_features()
+        )
+        assert metadata["feature_names"] == expected_features
+        assert json.dumps(metadata, sort_keys=True)
+
+        preprocessor = Preprocessor.from_state(metadata["preprocessor_state"])
+        goalkeeper_data, outfield_data = split_gk_and_outfield(synthetic_data)
+        population_data = goalkeeper_data if model_type == "goalkeeper" else outfield_data
+        selected_data = select_features(
+            population_data,
+            is_goalkeeper=model_type == "goalkeeper",
+        )
+        raw_features = selected_data.drop(columns=["overall", "player_id"])
+        feature_names = metadata["feature_names"]
+        reordered_features = raw_features.loc[:, list(reversed(feature_names))]
+        transformed = preprocessor.transform_features(reordered_features)
+        assert list(transformed.columns) == feature_names
+
+        with pytest.raises(ValueError, match="Incompatible feature schema"):
+            preprocessor.transform_features(reordered_features.drop(columns=[feature_names[0]]))
 
         model = FIFAOverallModel(input_size=results[model_type]["input_features"])
         model.load_state_dict(checkpoint["model_state_dict"])
+
+
+@pytest.mark.parametrize("invalid_target", ["nonnumeric", "out_of_range"])
+def test_baseline_rejects_invalid_target_before_training(monkeypatch, tmp_path, invalid_target):
+    synthetic_data = make_synthetic_fifa_data()
+    if invalid_target == "nonnumeric":
+        synthetic_data["overall"] = synthetic_data["overall"].astype(object)
+        synthetic_data.loc[0, "overall"] = "not-a-rating"
+    else:
+        synthetic_data.loc[0, "overall"] = 150
+
+    training_started = False
+
+    def fail_if_training_starts(*args, **kwargs):
+        nonlocal training_started
+        training_started = True
+        raise AssertionError("training must not start for invalid targets")
+
+    monkeypatch.setattr(baseline_training, "load_dataset", lambda path: synthetic_data)
+    monkeypatch.setattr(baseline_training, "train_model", fail_if_training_starts)
+
+    with pytest.raises(
+        baseline_training.BaselineExperimentError,
+        match="Dataset contains invalid target values",
+    ):
+        baseline_training.run_baseline_experiment(
+            dataset_path=tmp_path / "synthetic.csv",
+            models_dir=tmp_path / "models",
+            results_path=tmp_path / "results.json",
+        )
+
+    assert training_started is False
+
+
+def test_baseline_preserves_missing_target_drop_policy(monkeypatch, tmp_path):
+    synthetic_data = make_synthetic_fifa_data()
+    synthetic_data.loc[0, "overall"] = np.nan
+    training_calls = []
+
+    def fake_train_model(model, train_loader, val_loader, **kwargs):
+        training_calls.append((train_loader, val_loader))
+        return {
+            "val_rmse": [2.0],
+            "val_r2": [0.25],
+            "best_epoch": 1,
+            "best_val_mae": 1.5,
+        }
+
+    monkeypatch.setattr(baseline_training, "load_dataset", lambda path: synthetic_data)
+    monkeypatch.setattr(baseline_training, "train_model", fake_train_model)
+
+    results = baseline_training.run_baseline_experiment(
+        dataset_path=tmp_path / "synthetic.csv",
+        models_dir=tmp_path / "models",
+        results_path=tmp_path / "results.json",
+    )
+
+    assert len(training_calls) == 2
+    assert "Target column contains missing values." in results["dataset"]["validation"]["target_issues"]

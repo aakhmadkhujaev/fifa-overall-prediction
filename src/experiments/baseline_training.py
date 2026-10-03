@@ -117,6 +117,13 @@ def _run_player_group(
     input_features = int(features["train"].shape[1])
     set_seed(RANDOM_SEED)
     model = FIFAOverallModel(input_size=input_features)
+    checkpoint_metadata = {
+        "checkpoint_schema_version": 2,
+        "model_type": model_type,
+        "input_features": input_features,
+        "feature_names": list(features["train"].columns),
+        "preprocessor_state": preprocessor.get_state(),
+    }
 
     print(f"Training {model_type} model...")
     training_started = time.perf_counter()
@@ -130,6 +137,7 @@ def _run_player_group(
         patience=PATIENCE,
         checkpoint_path=checkpoint_path,
         seed=RANDOM_SEED,
+        checkpoint_metadata=checkpoint_metadata,
     )
     training_seconds = time.perf_counter() - training_started
 
@@ -169,6 +177,16 @@ def run_baseline_experiment(
     validation_report = validate_dataset(dataset)
     if not validation_report["target_exists"]:
         raise BaselineExperimentError("Dataset does not contain the overall target column.")
+    invalid_target_issues = [
+        issue
+        for issue in validation_report["target_issues"]
+        if issue != "Target column contains missing values."
+    ]
+    if invalid_target_issues:
+        raise BaselineExperimentError(
+            "Dataset contains invalid target values: "
+            + "; ".join(invalid_target_issues)
+        )
     print(f"Dataset loaded: {len(dataset)} rows")
 
     print("Preparing goalkeeper data...")

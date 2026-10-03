@@ -1,9 +1,14 @@
+import base64
+import io
+from typing import Tuple, Dict, Any, Mapping
+
+import joblib
 import pandas as pd
 import numpy as np
 from sklearn.model_selection import GroupShuffleSplit
 from sklearn.impute import SimpleImputer
 from sklearn.preprocessing import StandardScaler
-from typing import Tuple, Dict, Any
+PREPROCESSOR_SCHEMA_VERSION = 1
 
 class Preprocessor:
     def __init__(self, is_goalkeeper: bool = False):
@@ -13,6 +18,9 @@ class Preprocessor:
         self.scaler = StandardScaler()
         self.numeric_features = []
         self.categorical_features = ['preferred_foot']
+        self.feature_names = []
+        self.target_col = 'overall'
+        self.group_col = 'player_id'
 
     def _split_data(self, df: pd.DataFrame, group_col: str, test_size: float, val_size: float, random_state: int = 42) -> Tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
         """
@@ -79,6 +87,9 @@ class Preprocessor:
 
         # Determine numeric and categorical features
         features = [c for c in df.columns if c not in [target_col, group_col]]
+        self.feature_names = list(features)
+        self.target_col = target_col
+        self.group_col = group_col
         self.numeric_features = [f for f in features if f not in self.categorical_features]
 
         # Separate X and y
@@ -164,3 +175,83 @@ class Preprocessor:
         }
 
         return X_dict, y_dict, stats
+
+    def get_state(self) -> Dict[str, Any]:
+        """Return fitted preprocessing state using only torch-serializable values."""
+        if not self.feature_names:
+            raise ValueError("Preprocessor must be fitted with process() before state export.")
+
+        return {
+            'schema_version': PREPROCESSOR_SCHEMA_VERSION,
+            'is_goalkeeper': self.is_goalkeeper,
+            'feature_names': list(self.feature_names),
+            'numeric_features': list(self.numeric_features),
+            'categorical_features': list(self.categorical_features),
+            'target_col': self.target_col,
+            'group_col': self.group_col,
+            'transformers': self._serialize_transformers(),
+        }
+
+    def _serialize_transformers(self) -> str:
+        buffer = io.BytesIO()
+        joblib.dump(
+            {
+                'numeric_imputer': self.num_imputer,
+                'categorical_imputer': self.cat_imputer,
+                'scaler': self.scaler,
+            },
+            buffer,
+        )
+        return base64.b64encode(buffer.getvalue()).decode('ascii')
+
+    @classmethod
+    def from_state(cls, state: Mapping[str, Any]) -> 'Preprocessor':
+        """Restore a preprocessor from state saved in a model checkpoint."""
+        if state.get('schema_version') != PREPROCESSOR_SCHEMA_VERSION:
+            raise ValueError(
+                f"Unsupported preprocessing schema version: {state.get('schema_version')}"
+            )
+
+        preprocessor = cls(is_goalkeeper=bool(state['is_goalkeeper']))
+        preprocessor.feature_names = list(state['feature_names'])
+        preprocessor.numeric_features = list(state['numeric_features'])
+        preprocessor.categorical_features = list(state['categorical_features'])
+        preprocessor.target_col = str(state['target_col'])
+        preprocessor.group_col = str(state['group_col'])
+
+        transformer_bytes = base64.b64decode(state['transformers'].encode('ascii'))
+        transformers = joblib.load(io.BytesIO(transformer_bytes))
+        preprocessor.num_imputer = transformers['numeric_imputer']
+        preprocessor.cat_imputer = transformers['categorical_imputer']
+        preprocessor.scaler = transformers['scaler']
+        return preprocessor
+
+    def transform_features(self, df: pd.DataFrame) -> pd.DataFrame:
+        """Transform compatible raw features using the fitted checkpoint state."""
+        if not self.feature_names:
+            raise ValueError("Preprocessor state is not fitted.")
+
+        missing_features = [feature for feature in self.feature_names if feature not in df.columns]
+        extra_features = [feature for feature in df.columns if feature not in self.feature_names]
+        if missing_features or extra_features:
+            raise ValueError(
+                "Incompatible feature schema. "
+                f"Missing: {missing_features}; extra: {extra_features}."
+            )
+
+        transformed = df.loc[:, self.feature_names].copy()
+        if self.numeric_features:
+            transformed[self.numeric_features] = np.asarray(
+                self.num_imputer.transform(transformed[self.numeric_features])
+            )
+        if self.categorical_features:
+            transformed[self.categorical_features] = np.asarray(
+                self.cat_imputer.transform(transformed[self.categorical_features])
+            )
+        transformed = self._encode_categorical(transformed)
+        all_numeric = self.numeric_features + self.categorical_features
+        transformed[all_numeric] = self.scaler.transform(transformed[all_numeric])
+        transformed = transformed.astype(np.float32)
+        if not np.isfinite(transformed.to_numpy()).all():
+            raise ValueError("Transformed features contain NaN or infinite values.")
+        return transformed

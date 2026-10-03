@@ -60,6 +60,7 @@ def train_model(
     patience: Optional[int] = None,
     checkpoint_path: Optional[Union[str, Path]] = None,
     seed: Optional[int] = None,
+    checkpoint_metadata: Optional[Dict[str, Any]] = None,
 ) -> History:
     """Train a regression model and return per-epoch training history.
 
@@ -131,6 +132,7 @@ def train_model(
                 patience=patience,
                 device=resolved_device,
                 seed=seed,
+                checkpoint_metadata=checkpoint_metadata,
             )
         else:
             epochs_without_improvement += 1
@@ -288,6 +290,7 @@ def _save_checkpoint(
     patience: Optional[int],
     device: torch.device,
     seed: Optional[int],
+    checkpoint_metadata: Optional[Dict[str, Any]],
 ) -> None:
     if checkpoint_path is None:
         return
@@ -307,6 +310,7 @@ def _save_checkpoint(
         },
         'best_epoch': best_epoch,
         'best_val_mae': best_val_mae,
+        'checkpoint_metadata': checkpoint_metadata,
         'history': {
             key: value
             for key, value in history.items()
