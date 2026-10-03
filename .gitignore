@@ -13,3 +13,4 @@ models/
 *.pth
 analysis_results*.json
 reports/baseline_training_results.json
+reports/baseline_error_analysis_figures/
