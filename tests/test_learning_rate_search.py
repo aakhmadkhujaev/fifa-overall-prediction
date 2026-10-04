@@ -1,9 +1,11 @@
 from dataclasses import replace
 from math import isfinite
+from typing import Optional
+
 import pandas as pd
 import pytest
 
-from src.experiments.experiment import ExperimentConfig, ExperimentResult
+from src.experiments.experiment import ExperimentConfig, ExperimentResult, Population
 from src.experiments.learning_rate_search import (
     LearningRateSearchConfig,
     LearningRateSearcher,
@@ -13,7 +15,7 @@ from src.experiments.learning_rate_search import (
 )
 
 
-def make_search_config(population="outfield"):
+def make_search_config(population: Population = "outfield"):
     return LearningRateSearchConfig(
         search_name="smoke-search",
         min_learning_rate=1e-4,
@@ -105,7 +107,11 @@ def test_fine_candidates_are_deterministic_and_centered_on_coarse_winner():
     assert all(isfinite(rate) and rate > 0 for rate in candidates)
 
 
-def make_result(config: ExperimentConfig, validation_mae: float, test_mae: float):
+def make_result(
+    config: ExperimentConfig,
+    validation_mae: float,
+    test_mae: Optional[float],
+):
     return ExperimentResult(
         experiment_name=config.experiment_name,
         population=config.population,
@@ -123,12 +129,22 @@ def make_result(config: ExperimentConfig, validation_mae: float, test_mae: float
 
 
 class FakeRunner:
-    def __init__(self, config, calls, metrics):
+    def __init__(
+        self,
+        config: ExperimentConfig,
+        calls: list[tuple[ExperimentConfig, pd.DataFrame, bool]],
+        metrics: dict[float, tuple[float, float]],
+    ) -> None:
         self.config = config
         self.calls = calls
         self.metrics = metrics
 
-    def run(self, population_data, *, evaluate_test=True):
+    def run(
+        self,
+        population_data: pd.DataFrame,
+        *,
+        evaluate_test: bool = True,
+    ) -> ExperimentResult:
         self.calls.append((self.config, population_data, evaluate_test))
         validation_mae, test_mae = self.metrics.get(
             self.config.learning_rate, (1.0, 1.0)

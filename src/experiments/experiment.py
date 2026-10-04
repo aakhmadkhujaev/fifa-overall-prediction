@@ -6,7 +6,17 @@ import math
 import time
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Callable, Dict, Literal, Optional, Protocol, Union
+from typing import (
+    Any,
+    Callable,
+    Dict,
+    Iterator,
+    Literal,
+    Mapping,
+    Optional,
+    Protocol,
+    Union,
+)
 
 import pandas as pd
 import torch
@@ -22,7 +32,6 @@ from src.training.trainer import calculate_regression_metrics, set_seed, train_m
 
 Population = Literal["goalkeeper", "outfield"]
 PathLike = Union[str, Path]
-DataLoaderFactory = Callable[..., Dict[str, DataLoader]]
 ModelFactory = Callable[..., nn.Module]
 TrainFunction = Callable[..., Dict[str, Any]]
 
@@ -33,6 +42,13 @@ class PreprocessorProtocol(Protocol):
     def process(
         self, data: pd.DataFrame
     ) -> tuple[Dict[str, pd.DataFrame], Dict[str, pd.Series], Dict[str, Any]]:
+        ...
+
+
+class DataLoaderProtocol(Protocol):
+    """Minimal iterable batch interface needed by the experiment runner."""
+
+    def __iter__(self) -> Iterator[tuple[torch.Tensor, torch.Tensor]]:
         ...
 
 
@@ -101,6 +117,21 @@ class ExperimentResult:
     test_rmse: Optional[float]
     test_r2: Optional[float]
     training_duration_seconds: float
+
+
+class RunnerProtocol(Protocol):
+    """Runner interface required by learning-rate search orchestration."""
+
+    def run(
+        self,
+        population_data: pd.DataFrame,
+        *,
+        evaluate_test: bool = True,
+    ) -> ExperimentResult:
+        ...
+
+
+DataLoaderFactory = Callable[..., Mapping[str, DataLoaderProtocol]]
 
 
 class ExperimentRunner:
@@ -184,7 +215,9 @@ class ExperimentRunner:
         )
 
     @staticmethod
-    def _require_loaders(dataloaders: Dict[str, DataLoader]) -> None:
+    def _require_loaders(
+        dataloaders: Mapping[str, DataLoaderProtocol]
+    ) -> None:
         missing = {name for name in ("train", "val", "test") if name not in dataloaders}
         if missing:
             raise ValueError(f"Dataloaders are missing required splits: {sorted(missing)}.")
@@ -201,7 +234,9 @@ class ExperimentRunner:
         except (IndexError, KeyError, TypeError) as error:
             raise ValueError("Training history lacks metrics for the best epoch.") from error
 
-    def _evaluate(self, model: nn.Module, data_loader: DataLoader) -> Dict[str, float]:
+    def _evaluate(
+        self, model: nn.Module, data_loader: DataLoaderProtocol
+    ) -> Dict[str, float]:
         model.eval()
         predictions = []
         targets = []

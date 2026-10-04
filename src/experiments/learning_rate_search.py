@@ -14,10 +14,11 @@ from src.experiments.experiment import (
     ExperimentResult,
     ExperimentRunner,
     Population,
+    RunnerProtocol,
 )
 
 
-RunnerFactory = Callable[[ExperimentConfig], ExperimentRunner]
+RunnerFactory = Callable[[ExperimentConfig], RunnerProtocol]
 
 
 def make_milestone_6b_search_config(
