@@ -7,6 +7,7 @@ from src.experiments.learning_rate_search import (
     LearningRateSearchResult,
     generate_coarse_learning_rates,
     generate_fine_learning_rates,
+    make_milestone_6b_search_config,
 )
 
 __all__ = [
@@ -18,4 +19,5 @@ __all__ = [
     "LearningRateSearcher",
     "generate_coarse_learning_rates",
     "generate_fine_learning_rates",
+    "make_milestone_6b_search_config",
 ]

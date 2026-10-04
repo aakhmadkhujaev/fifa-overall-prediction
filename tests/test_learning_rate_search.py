@@ -9,6 +9,7 @@ from src.experiments.learning_rate_search import (
     LearningRateSearcher,
     generate_coarse_learning_rates,
     generate_fine_learning_rates,
+    make_milestone_6b_search_config,
 )
 
 
@@ -22,6 +23,23 @@ def make_search_config(population="outfield"):
         fixed_config=ExperimentConfig("fixed", population),
         refinement_factor=2.0,
     )
+
+
+@pytest.mark.parametrize("population", ["goalkeeper", "outfield"])
+def test_milestone_6b_config_uses_approved_fixed_settings(population):
+    config = make_milestone_6b_search_config("approved-search", population)
+
+    assert (config.min_learning_rate, config.max_learning_rate) == (1e-4, 1e-2)
+    assert (config.coarse_trials, config.fine_trials) == (7, 5)
+    assert config.refinement_factor == 3.0
+    assert config.fixed_config.population == population
+    assert config.fixed_config.random_seed == 42
+    assert config.fixed_config.batch_size == 256
+    assert config.fixed_config.epochs == 30
+    assert config.fixed_config.patience == 7
+    assert config.fixed_config.device == "cpu"
+    assert config.fixed_config.num_workers == 0
+    assert (config.fixed_config.hidden_size1, config.fixed_config.hidden_size2) == (64, 32)
 
 
 @pytest.mark.parametrize(

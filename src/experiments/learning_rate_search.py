@@ -20,6 +20,25 @@ from src.experiments.experiment import (
 RunnerFactory = Callable[[ExperimentConfig], ExperimentRunner]
 
 
+def make_milestone_6b_search_config(
+    search_name: str,
+    population: Population,
+) -> "LearningRateSearchConfig":
+    """Create the approved Milestone 6B search configuration."""
+    return LearningRateSearchConfig(
+        search_name=search_name,
+        min_learning_rate=1e-4,
+        max_learning_rate=1e-2,
+        coarse_trials=7,
+        fine_trials=5,
+        refinement_factor=3.0,
+        fixed_config=ExperimentConfig(
+            experiment_name=f"{search_name}-fixed",
+            population=population,
+        ),
+    )
+
+
 @dataclass(frozen=True)
 class LearningRateSearchConfig:
     """Validated settings for one population-specific learning-rate search."""
