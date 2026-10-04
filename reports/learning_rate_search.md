@@ -10,7 +10,7 @@ The fine stage identifies the coarse candidate with the lowest validation MAE, t
 
 ## Selection And Isolation
 
-Candidates are ranked only by validation MAE. Test MAE, RMSE, and R2 remain available in each `ExperimentResult`, but the search never reads them when selecting either the coarse winner or the final winner. The existing runner continues to evaluate the test split only after the model has been selected by validation MAE.
+Candidates are ranked only by validation MAE. Candidate runs defer test evaluation, so their `ExperimentResult` values contain validation metrics and no test metrics. After the final winner is selected, the search runs that configuration with test evaluation enabled exactly once. Test MAE, RMSE, and R2 are never read when selecting either the coarse winner or the final winner.
 
 Each candidate receives a new frozen `ExperimentConfig` with only `learning_rate` changed. The search validates that all other Milestone 6B settings remain fixed: seed 42, batch size 256, 30 epochs, patience 7, CPU, zero workers, and the existing 64 -> 32 -> 1 architecture. Goalkeeper and outfield searches use the same implementation with independent fixed population configurations.
 

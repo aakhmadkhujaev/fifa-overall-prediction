@@ -128,12 +128,16 @@ class FakeRunner:
         self.calls = calls
         self.metrics = metrics
 
-    def run(self, population_data):
-        self.calls.append((self.config, population_data))
+    def run(self, population_data, *, evaluate_test=True):
+        self.calls.append((self.config, population_data, evaluate_test))
         validation_mae, test_mae = self.metrics.get(
             self.config.learning_rate, (1.0, 1.0)
         )
-        return make_result(self.config, validation_mae, test_mae)
+        return make_result(
+            self.config,
+            validation_mae,
+            test_mae if evaluate_test else None,
+        )
 
 
 @pytest.mark.parametrize("population", ["goalkeeper", "outfield"])
@@ -155,9 +159,11 @@ def test_search_executes_candidates_with_only_learning_rate_changed(population):
         pd.DataFrame({"synthetic": [1]})
     )
 
-    assert len({candidate_config.learning_rate for candidate_config, _ in calls}) == len(calls)
+    candidate_calls = [call for call in calls if not call[2]]
+    assert len({candidate_config.learning_rate for candidate_config, _, _ in candidate_calls}) == len(candidate_calls)
     assert result.population == population
-    for candidate_config, _ in calls:
+    for candidate_config, _, evaluate_test in candidate_calls:
+        assert evaluate_test is False
         assert candidate_config.population == population
         assert candidate_config.random_seed == 42
         assert candidate_config.batch_size == 256
@@ -190,6 +196,7 @@ def test_search_selects_by_validation_mae_not_test_mae():
     assert result.best_learning_rate == coarse_rates[1]
     assert result.best_validation_mae == 0.70
     assert result.best_experiment_result.test_mae == 0.90
+    assert result.best_experiment_result.configuration.learning_rate == coarse_rates[1]
     assert result.total_trials == len(result.coarse_results) + len(result.fine_results)
     assert len(result.coarse_results) == config.coarse_trials
     assert len(result.fine_results) <= config.fine_trials
@@ -215,8 +222,13 @@ def test_search_does_not_execute_duplicate_coarse_and_fine_rates():
         ),
     ).run(pd.DataFrame({"synthetic": [1]}))
 
-    executed_rates = [candidate_config.learning_rate for candidate_config, _ in calls]
+    executed_rates = [candidate_config.learning_rate for candidate_config, _, evaluate_test in calls if not evaluate_test]
     assert executed_rates == expected_rates
     assert len(executed_rates) == len(set(executed_rates))
     assert result.total_trials == len(expected_rates)
     assert len(result.fine_results) < config.fine_trials
+    assert sum(evaluate_test for _, _, evaluate_test in calls) == 1
+    assert calls[-1][0].learning_rate == result.best_learning_rate
+    assert calls[-1][2] is True
+    assert all(candidate_result.test_mae is None for candidate_result in result.coarse_results)
+    assert all(candidate_result.test_mae is None for candidate_result in result.fine_results)

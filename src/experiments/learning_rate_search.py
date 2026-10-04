@@ -168,16 +168,20 @@ class LearningRateSearcher:
             stage="fine",
         )
         all_results = coarse_results + fine_results
-        best_result = min(all_results, key=lambda result: result.validation_mae)
+        selected_result = min(all_results, key=lambda result: result.validation_mae)
+        final_result = self._runner_factory(selected_result.configuration).run(
+            population_data,
+            evaluate_test=True,
+        )
 
         return LearningRateSearchResult(
             search_name=self.config.search_name,
             population=self.config.fixed_config.population,
             coarse_results=coarse_results,
             fine_results=fine_results,
-            best_learning_rate=best_result.configuration.learning_rate,
-            best_validation_mae=best_result.validation_mae,
-            best_experiment_result=best_result,
+            best_learning_rate=selected_result.configuration.learning_rate,
+            best_validation_mae=selected_result.validation_mae,
+            best_experiment_result=final_result,
             total_trials=len(all_results),
             total_duration_seconds=time.perf_counter() - started,
         )
@@ -199,7 +203,7 @@ class LearningRateSearcher:
                 learning_rate=learning_rate,
             )
             runner = self._runner_factory(candidate_config)
-            results.append(runner.run(population_data))
+            results.append(runner.run(population_data, evaluate_test=False))
         return tuple(results)
 
 

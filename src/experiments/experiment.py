@@ -97,9 +97,9 @@ class ExperimentResult:
     validation_mae: float
     validation_rmse: float
     validation_r2: float
-    test_mae: float
-    test_rmse: float
-    test_r2: float
+    test_mae: Optional[float]
+    test_rmse: Optional[float]
+    test_r2: Optional[float]
     training_duration_seconds: float
 
 
@@ -126,8 +126,9 @@ class ExperimentRunner:
         population_data: pd.DataFrame,
         *,
         checkpoint_path: Optional[PathLike] = None,
+        evaluate_test: bool = True,
     ) -> ExperimentResult:
-        """Run an experiment while keeping test evaluation after model selection."""
+        """Run an experiment, optionally deferring test-set evaluation."""
         is_goalkeeper = self.config.population == "goalkeeper"
         selected_data = select_features(population_data, is_goalkeeper=is_goalkeeper)
         preprocessor = self._preprocessor_factory(is_goalkeeper=is_goalkeeper)
@@ -165,7 +166,7 @@ class ExperimentRunner:
         if best_epoch is None:
             raise ValueError("Training history does not contain a best epoch.")
         validation_metrics = self._history_metrics_at_epoch(history, int(best_epoch))
-        test_metrics = self._evaluate(model, dataloaders["test"])
+        test_metrics = self._evaluate(model, dataloaders["test"]) if evaluate_test else None
 
         return ExperimentResult(
             experiment_name=self.config.experiment_name,
@@ -176,9 +177,9 @@ class ExperimentRunner:
             validation_mae=validation_metrics["mae"],
             validation_rmse=validation_metrics["rmse"],
             validation_r2=validation_metrics["r2"],
-            test_mae=test_metrics["mae"],
-            test_rmse=test_metrics["rmse"],
-            test_r2=test_metrics["r2"],
+            test_mae=test_metrics["mae"] if test_metrics else None,
+            test_rmse=test_metrics["rmse"] if test_metrics else None,
+            test_r2=test_metrics["r2"] if test_metrics else None,
             training_duration_seconds=duration,
         )
 

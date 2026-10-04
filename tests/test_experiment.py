@@ -164,3 +164,51 @@ def test_runner_evaluates_test_after_training(monkeypatch):
 
     assert events[0] == "train"
     assert "test" in events[1:]
+
+
+def test_runner_can_defer_test_evaluation(monkeypatch):
+    config = ExperimentConfig("deferred", "outfield")
+    monkeypatch.setattr(
+        "src.experiments.experiment.select_features",
+        lambda data, is_goalkeeper: data,
+    )
+
+    class FailingTestLoader:
+        def __iter__(self):
+            raise AssertionError("deferred execution must not access test data")
+
+    class PreprocessorStub:
+        def process(self, data):
+            frame = pd.DataFrame([[1]])
+            return ({"train": frame, "val": frame, "test": frame}, {}, {})
+
+    def fake_dataloaders(*args, **kwargs):
+        loaders = make_split_loaders()
+        loaders["test"] = FailingTestLoader()
+        return loaders
+
+    def fake_train(model, train_loader, val_loader, **kwargs):
+        return {
+            "best_epoch": 1,
+            "best_val_mae": 0.5,
+            "val_mae": [0.5],
+            "val_rmse": [0.6],
+            "val_r2": [0.7],
+        }
+
+    runner = ExperimentRunner(
+        config,
+        preprocessor_factory=lambda **kwargs: PreprocessorStub(),
+        dataloader_factory=fake_dataloaders,
+        model_factory=lambda **kwargs: nn.Linear(3, 1),
+        train_function=fake_train,
+    )
+
+    result = runner.run(pd.DataFrame({"overall": [1]}), evaluate_test=False)
+
+    assert result.validation_mae == 0.5
+    assert result.validation_rmse == 0.6
+    assert result.validation_r2 == 0.7
+    assert result.test_mae is None
+    assert result.test_rmse is None
+    assert result.test_r2 is None
