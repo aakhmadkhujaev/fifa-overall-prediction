@@ -16,6 +16,11 @@ from src.experiments.batch_size_search import (
     generate_batch_size_candidates,
     make_milestone_6c_search_config,
 )
+from src.experiments.training_duration import (
+    TrainingDurationResult,
+    make_milestone_6d_configs,
+    run_training_duration_experiments,
+)
 
 __all__ = [
     "ExperimentConfig",
@@ -32,4 +37,7 @@ __all__ = [
     "BatchSizeSearchResult",
     "generate_batch_size_candidates",
     "make_milestone_6c_search_config",
+    "TrainingDurationResult",
+    "make_milestone_6d_configs",
+    "run_training_duration_experiments",
 ]
