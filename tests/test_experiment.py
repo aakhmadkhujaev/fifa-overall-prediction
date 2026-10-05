@@ -1,4 +1,4 @@
-from typing import Any, cast
+from typing import Any, Iterator, cast
 
 import pandas as pd
 import pytest
@@ -10,11 +10,12 @@ from src.experiments.experiment import (
     ExperimentConfig,
     ExperimentResult,
     ExperimentRunner,
+    DataLoaderProtocol,
     PreprocessorProtocol,
 )
 
 
-def make_split_loaders():
+def make_split_loaders() -> dict[str, DataLoaderProtocol]:
     features = torch.zeros(2, 3)
     targets = torch.ones(2, 1)
     return {
@@ -182,7 +183,7 @@ def test_runner_can_defer_test_evaluation(monkeypatch):
     )
 
     class FailingTestLoader:
-        def __iter__(self):
+        def __iter__(self) -> Iterator[tuple[torch.Tensor, torch.Tensor]]:
             raise AssertionError("deferred execution must not access test data")
 
     class PreprocessorStub:

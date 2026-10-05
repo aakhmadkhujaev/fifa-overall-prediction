@@ -39,7 +39,7 @@ def test_analyze_population_uses_test_rows_and_reports_rating_ranges(tmp_path):
     rows = []
     for player_id in range(12):
         for record in range(2):
-            row = {"player_id": player_id, "overall": 60 + player_id}
+            row: dict[str, object] = {"player_id": player_id, "overall": 60 + player_id}
             row.update({feature: ("Right" if feature == "preferred_foot" else float(50 + player_id + record)) for feature in features})
             rows.append(row)
     data = pd.DataFrame(rows)

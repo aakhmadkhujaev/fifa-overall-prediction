@@ -1,14 +1,14 @@
 import torch
 from torch.utils.data import DataLoader
-from typing import Dict
+from typing import Dict, Mapping
 from src.training.dataset import FIFAPlayerDataset
 import pandas as pd
 import numpy as np
 from typing import Union
 
 def create_dataloaders(
-    X_dict: Dict[str, Union[pd.DataFrame, np.ndarray]],
-    y_dict: Dict[str, Union[pd.Series, pd.DataFrame, np.ndarray]],
+    X_dict: Mapping[str, Union[pd.DataFrame, np.ndarray]],
+    y_dict: Mapping[str, Union[pd.Series, pd.DataFrame, np.ndarray]],
     batch_size: int = 32,
     num_workers: int = 0
 ) -> Dict[str, DataLoader]:

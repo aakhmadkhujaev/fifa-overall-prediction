@@ -1,7 +1,7 @@
 import pandas as pd
 from typing import Dict, Any
 
-def validate_dataset(df: pd.DataFrame) -> Dict[str, Any]:
+def validate_dataset(df: object) -> Dict[str, Any]:
     """
     Validates the dataset structure and quality without modifying it.
 
