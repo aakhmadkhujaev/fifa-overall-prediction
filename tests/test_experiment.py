@@ -88,7 +88,10 @@ def test_runner_propagates_configuration_and_keeps_test_out_of_training(monkeypa
 
         class FakePreprocessor:
             def process(
-                self, data: pd.DataFrame
+                self,
+                df: pd.DataFrame,
+                target_col: str = "overall",
+                group_col: str = "player_id",
             ) -> tuple[dict[str, pd.DataFrame], dict[str, pd.Series], dict[str, Any]]:
                 return ({"train": pd.DataFrame([[1, 2, 3]]), "val": pd.DataFrame([[1, 2, 3]]), "test": pd.DataFrame([[1, 2, 3]])}, {}, {})
 
@@ -146,7 +149,12 @@ def test_runner_evaluates_test_after_training(monkeypatch):
             return torch.ones(features.shape[0], 1)
 
     class PreprocessorStub:
-        def process(self, data):
+        def process(
+            self,
+            df: pd.DataFrame,
+            target_col: str = "overall",
+            group_col: str = "player_id",
+        ):
             return (
                 {"train": pd.DataFrame([[1]]), "val": pd.DataFrame([[1]]), "test": pd.DataFrame([[1]])},
                 {},
@@ -178,7 +186,12 @@ def test_runner_can_defer_test_evaluation(monkeypatch):
             raise AssertionError("deferred execution must not access test data")
 
     class PreprocessorStub:
-        def process(self, data):
+        def process(
+            self,
+            df: pd.DataFrame,
+            target_col: str = "overall",
+            group_col: str = "player_id",
+        ):
             frame = pd.DataFrame([[1]])
             return ({"train": frame, "val": frame, "test": frame}, {}, {})
 

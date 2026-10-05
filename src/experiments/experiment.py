@@ -40,7 +40,10 @@ class PreprocessorProtocol(Protocol):
     """Minimal preprocessing interface required by the experiment runner."""
 
     def process(
-        self, data: pd.DataFrame
+        self,
+        df: pd.DataFrame,
+        target_col: str = "overall",
+        group_col: str = "player_id",
     ) -> tuple[Dict[str, pd.DataFrame], Dict[str, pd.Series], Dict[str, Any]]:
         ...
 
