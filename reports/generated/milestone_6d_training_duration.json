@@ -1,0 +1,97 @@
+{
+  "schema_version": 1,
+  "dataset": {
+    "path": "data/raw/male_players (legacy).csv",
+    "rows": 161583,
+    "goalkeeper_rows": 17970,
+    "outfield_rows": 143613
+  },
+  "populations": {
+    "goalkeeper": {
+      "population": "goalkeeper",
+      "configuration": {
+        "experiment_name": "milestone-6d-goalkeeper",
+        "population": "goalkeeper",
+        "random_seed": 42,
+        "batch_size": 128,
+        "learning_rate": 0.01,
+        "epochs": 50,
+        "patience": 7,
+        "device": "cpu",
+        "num_workers": 0,
+        "hidden_size1": 64,
+        "hidden_size2": 32
+      },
+      "experiment_result": {
+        "experiment_name": "milestone-6d-goalkeeper",
+        "population": "goalkeeper",
+        "configuration": {
+          "experiment_name": "milestone-6d-goalkeeper",
+          "population": "goalkeeper",
+          "random_seed": 42,
+          "batch_size": 128,
+          "learning_rate": 0.01,
+          "epochs": 50,
+          "patience": 7,
+          "device": "cpu",
+          "num_workers": 0,
+          "hidden_size1": 64,
+          "hidden_size2": 32
+        },
+        "best_epoch": 20,
+        "best_validation_mae": 0.3790021240711212,
+        "validation_mae": 0.3790021240711212,
+        "validation_rmse": 0.4763753414154053,
+        "validation_r2": 0.9961926257237792,
+        "test_mae": 0.38301607966423035,
+        "test_rmse": 0.48369768261909485,
+        "test_r2": 0.9957777825184166,
+        "training_duration_seconds": 10.742888599983416
+      },
+      "runtime_seconds": 11.03581850003684
+    },
+    "outfield": {
+      "population": "outfield",
+      "configuration": {
+        "experiment_name": "milestone-6d-outfield",
+        "population": "outfield",
+        "random_seed": 42,
+        "batch_size": 256,
+        "learning_rate": 0.0017320508075688787,
+        "epochs": 50,
+        "patience": 7,
+        "device": "cpu",
+        "num_workers": 0,
+        "hidden_size1": 64,
+        "hidden_size2": 32
+      },
+      "experiment_result": {
+        "experiment_name": "milestone-6d-outfield",
+        "population": "outfield",
+        "configuration": {
+          "experiment_name": "milestone-6d-outfield",
+          "population": "outfield",
+          "random_seed": 42,
+          "batch_size": 256,
+          "learning_rate": 0.0017320508075688787,
+          "epochs": 50,
+          "patience": 7,
+          "device": "cpu",
+          "num_workers": 0,
+          "hidden_size1": 64,
+          "hidden_size2": 32
+        },
+        "best_epoch": 27,
+        "best_validation_mae": 0.7221816778182983,
+        "validation_mae": 0.7221816778182983,
+        "validation_rmse": 0.9742979407310486,
+        "validation_r2": 0.9803649429231882,
+        "test_mae": 0.7247869372367859,
+        "test_rmse": 0.9712936282157898,
+        "test_r2": 0.9802714977413416,
+        "training_duration_seconds": 56.72335089999251
+      },
+      "runtime_seconds": 57.92154800001299
+    }
+  }
+}
