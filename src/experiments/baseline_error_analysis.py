@@ -13,6 +13,7 @@ import pandas as pd
 import torch
 
 from src.data.data_loader import load_dataset
+from src.evaluation.error_analysis import calculate_error_direction
 from src.features.feature_engineering import (
     get_goalkeeper_features,
     get_outfield_features,
@@ -21,6 +22,7 @@ from src.features.feature_engineering import (
 )
 from src.preprocessing.preprocessor import Preprocessor
 from src.training.model import FIFAOverallModel
+from src.training.trainer import calculate_regression_metrics
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
@@ -53,31 +55,21 @@ def calculate_error_metrics(
     predictions: Sequence[float] | pd.Series | np.ndarray,
 ) -> dict[str, float]:
     """Return regression and signed-error metrics for aligned values."""
-    actual_array = np.asarray(actual, dtype=np.float64).reshape(-1)
-    prediction_array = np.asarray(predictions, dtype=np.float64).reshape(-1)
-    if actual_array.size == 0:
-        raise ValueError("At least one test observation is required.")
-    if actual_array.shape != prediction_array.shape:
-        raise ValueError("Actual and prediction arrays must have the same shape.")
-    if not np.isfinite(actual_array).all() or not np.isfinite(prediction_array).all():
-        raise ValueError("Actual values and predictions must be finite.")
-
-    residuals = prediction_array - actual_array
-    squared_error = np.square(residuals)
-    total_sum_squares = np.square(actual_array - actual_array.mean()).sum()
-    r2 = 1.0 - squared_error.sum() / total_sum_squares if total_sum_squares else (
-        1.0 if squared_error.sum() == 0 else 0.0
+    core_metrics = calculate_regression_metrics(
+        torch.as_tensor(np.asarray(predictions, dtype=np.float32).copy()),
+        torch.as_tensor(np.asarray(actual, dtype=np.float32).copy()),
     )
+    directional_metrics = calculate_error_direction(actual, predictions)
     return {
-        "mae": float(np.abs(residuals).mean()),
-        "rmse": float(np.sqrt(squared_error.mean())),
-        "r2": float(r2),
-        "mean_error": float(residuals.mean()),
-        "mean_absolute_error": float(np.abs(residuals).mean()),
-        "test_samples": int(actual_array.size),
-        "underprediction_rate": float((residuals < 0).mean()),
-        "overprediction_rate": float((residuals > 0).mean()),
-        "zero_error_rate": float((residuals == 0).mean()),
+        "mae": float(core_metrics["mae"]),
+        "rmse": float(core_metrics["rmse"]),
+        "r2": float(core_metrics["r2"]),
+        "mean_error": float(directional_metrics["mean_error"]),
+        "mean_absolute_error": float(core_metrics["mae"]),
+        "test_samples": int(directional_metrics["test_samples"]),
+        "underprediction_rate": float(directional_metrics["underprediction_rate"]),
+        "overprediction_rate": float(directional_metrics["overprediction_rate"]),
+        "zero_error_rate": float(directional_metrics["zero_error_rate"]),
     }
 
 

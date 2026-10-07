@@ -10,6 +10,48 @@ from sklearn.impute import SimpleImputer
 from sklearn.preprocessing import StandardScaler
 PREPROCESSOR_SCHEMA_VERSION = 1
 
+
+def deterministic_group_split(
+    df: pd.DataFrame,
+    group_col: str,
+    test_size: float,
+    val_size: float,
+    random_state: int = 42,
+) -> Tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+    """Split rows into train, validation, and test groups deterministically."""
+    gss_test = GroupShuffleSplit(n_splits=1, test_size=test_size, random_state=random_state)
+    train_val_idx, test_idx = next(gss_test.split(df, groups=df[group_col]))
+
+    train_val_df = df.iloc[train_val_idx].copy()
+    test_df = df.iloc[test_idx].copy()
+
+    val_ratio = val_size / (1.0 - test_size)
+    gss_val = GroupShuffleSplit(n_splits=1, test_size=val_ratio, random_state=random_state)
+    train_idx, val_idx = next(gss_val.split(train_val_df, groups=train_val_df[group_col]))
+
+    return (
+        train_val_df.iloc[train_idx].copy(),
+        train_val_df.iloc[val_idx].copy(),
+        test_df,
+    )
+
+
+def split_with_target_handling(
+    df: pd.DataFrame,
+    target_col: str = "overall",
+    group_col: str = "player_id",
+    test_size: float = 0.15,
+    val_size: float = 0.15,
+    random_state: int = 42,
+) -> Tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+    """Apply training's missing-target policy before the deterministic split."""
+    cleaned = df.dropna(subset=[target_col])
+    if cleaned.empty:
+        raise ValueError("No rows remain after dropping missing target values.")
+    return deterministic_group_split(
+        cleaned, group_col, test_size, val_size, random_state
+    )
+
 class Preprocessor:
     def __init__(self, is_goalkeeper: bool = False):
         self.is_goalkeeper = is_goalkeeper
@@ -26,22 +68,7 @@ class Preprocessor:
         """
         Split the dataframe into train, val, and test sets using GroupShuffleSplit.
         """
-        # First split into train_val and test
-        gss_test = GroupShuffleSplit(n_splits=1, test_size=test_size, random_state=random_state)
-        train_val_idx, test_idx = next(gss_test.split(df, groups=df[group_col]))
-
-        train_val_df = df.iloc[train_val_idx].copy()
-        test_df = df.iloc[test_idx].copy()
-
-        # Then split train_val into train and val
-        val_ratio = val_size / (1.0 - test_size)
-        gss_val = GroupShuffleSplit(n_splits=1, test_size=val_ratio, random_state=random_state)
-        train_idx, val_idx = next(gss_val.split(train_val_df, groups=train_val_df[group_col]))
-
-        train_df = train_val_df.iloc[train_idx].copy()
-        val_df = train_val_df.iloc[val_idx].copy()
-
-        return train_df, val_df, test_df
+        return deterministic_group_split(df, group_col, test_size, val_size, random_state)
 
     def _encode_categorical(self, df: pd.DataFrame) -> pd.DataFrame:
         """
