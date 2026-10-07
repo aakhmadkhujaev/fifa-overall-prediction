@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import math
 import time
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import (
     Any,
@@ -39,12 +39,19 @@ TrainFunction = Callable[..., Dict[str, Any]]
 class PreprocessorProtocol(Protocol):
     """Minimal preprocessing interface required by the experiment runner."""
 
+    feature_names: list[str]
+    target_col: str
+    group_col: str
+
     def process(
         self,
         df: pd.DataFrame,
         target_col: str = "overall",
         group_col: str = "player_id",
     ) -> tuple[Dict[str, pd.DataFrame], Dict[str, pd.Series], Dict[str, Any]]:
+        ...
+
+    def get_state(self) -> Dict[str, Any]:
         ...
 
 
@@ -120,6 +127,12 @@ class ExperimentResult:
     test_rmse: Optional[float]
     test_r2: Optional[float]
     training_duration_seconds: float
+    checkpoint_path: Optional[str] = None
+    input_features: Optional[int] = None
+    feature_names: tuple[str, ...] = ()
+    split_sizes: Optional[Dict[str, int]] = None
+    epochs_completed: Optional[int] = None
+    stopped_early: Optional[bool] = None
 
 
 class RunnerProtocol(Protocol):
@@ -166,7 +179,7 @@ class ExperimentRunner:
         is_goalkeeper = self.config.population == "goalkeeper"
         selected_data = select_features(population_data, is_goalkeeper=is_goalkeeper)
         preprocessor = self._preprocessor_factory(is_goalkeeper=is_goalkeeper)
-        features, targets, _ = preprocessor.process(selected_data)
+        features, targets, split_stats = preprocessor.process(selected_data)
         dataloaders = self._dataloader_factory(
             features,
             targets,
@@ -183,6 +196,38 @@ class ExperimentRunner:
         )
 
         started = time.perf_counter()
+        checkpoint_metadata = None
+        if checkpoint_path is not None:
+            preprocessor_state = preprocessor.get_state()
+            checkpoint_metadata = {
+                "checkpoint_schema_version": 2,
+                "population": self.config.population,
+                "model_configuration": {
+                    "model_class": model.__class__.__name__,
+                    "input_size": int(features["train"].shape[1]),
+                    "hidden_size1": self.config.hidden_size1,
+                    "hidden_size2": self.config.hidden_size2,
+                },
+                "model_config": {
+                    "model_class": model.__class__.__name__,
+                    "input_size": int(features["train"].shape[1]),
+                    "hidden_size1": self.config.hidden_size1,
+                    "hidden_size2": self.config.hidden_size2,
+                },
+                "model_class": model.__class__.__name__,
+                "experiment_config": asdict(self.config),
+                "input_features": int(features["train"].shape[1]),
+                "input_feature_count": int(features["train"].shape[1]),
+                "feature_names": list(preprocessor.feature_names),
+                "target_column": preprocessor.target_col,
+                "group_column": preprocessor.group_col,
+                "target_col": preprocessor.target_col,
+                "group_col": preprocessor.group_col,
+                "preprocessing_schema_version": preprocessor_state["schema_version"],
+                "preprocessor_state": preprocessor_state,
+                "preprocessing_state": preprocessor_state,
+            }
+
         history = self._train_function(
             model,
             dataloaders["train"],
@@ -193,6 +238,7 @@ class ExperimentRunner:
             patience=self.config.patience,
             seed=self.config.random_seed,
             checkpoint_path=checkpoint_path,
+            **({"checkpoint_metadata": checkpoint_metadata} if checkpoint_metadata else {}),
         )
         duration = time.perf_counter() - started
 
@@ -215,6 +261,16 @@ class ExperimentRunner:
             test_rmse=test_metrics["rmse"] if test_metrics else None,
             test_r2=test_metrics["r2"] if test_metrics else None,
             training_duration_seconds=duration,
+            checkpoint_path=str(checkpoint_path) if checkpoint_path is not None else None,
+            input_features=int(features["train"].shape[1]),
+            feature_names=tuple(getattr(preprocessor, "feature_names", ())),
+            split_sizes={
+                key: int(split_stats[key])
+                for key in ("train_size", "val_size", "test_size")
+                if key in split_stats
+            } or None,
+            epochs_completed=int(history.get("epochs_completed", 0)),
+            stopped_early=bool(history.get("stopped_early", False)),
         )
 
     @staticmethod
