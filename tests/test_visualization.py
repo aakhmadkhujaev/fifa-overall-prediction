@@ -19,17 +19,23 @@ from matplotlib.patches import Rectangle
 from src.evaluation.error_analysis import (
     PREDICTION_COLUMNS,
     build_prediction_frame,
+    calculate_error_direction,
     largest_absolute_errors,
     summarize_rating_ranges,
 )
 from src.visualization import (
     EvaluationData,
     VisualizationDataError,
+    filter_predictions,
     get_comparison,
     get_largest_errors,
+    get_metrics,
     get_population_predictions,
+    get_prediction_ranges,
     get_rating_ranges,
+    get_run_summary,
     get_training_history,
+    get_training_summary,
     load_evaluation_data,
     plot_actual_vs_predicted,
     plot_error_distribution,
@@ -82,7 +88,20 @@ def make_results(predictions: pd.DataFrame) -> dict:
         populations[population] = {
             "population": population,
             "checkpoint_path": "C:\\does\\not\\exist\\model.pt",
-            "metrics": {"mae": mae, "test_samples": samples},
+            "split_sizes": {
+                "train_size": samples * 5,
+                "validation_size": samples,
+                "test_size": samples,
+            },
+            "metrics": {
+                "mae": mae,
+                "rmse": mae * 1.2,
+                "r2": 0.97 + 0.01 * index,
+                **calculate_error_direction(
+                    np.asarray(rows["actual_overall"]), np.asarray(rows["predicted_overall"])
+                ),
+            },
+            "checkpoint_metadata": {"input_feature_count": 12 + index},
             "error_analysis": {
                 "rating_ranges": summarize_rating_ranges(rows).to_dict(orient="records"),
                 "largest_absolute_errors": largest_absolute_errors(rows, limit=5).to_dict(
@@ -99,7 +118,14 @@ def make_results(predictions: pd.DataFrame) -> dict:
         }
     return {
         "schema_version": 1,
-        "evaluation": {"dataset_path": "C:\\does\\not\\exist\\players.csv"},
+        "evaluation": {
+            "dataset_path": "C:\\does\\not\\exist\\players.csv",
+            "prediction_csv": "C:\\does\\not\\exist\\predictions.csv",
+            "dataset_rows": 1000,
+            "test_size": 0.15,
+            "validation_size": 0.15,
+            "split_random_state": 42,
+        },
         "populations": populations,
         "comparison": comparison,
     }
@@ -343,6 +369,262 @@ def test_largest_errors_accessor(evaluation_data):
 def test_accessors_reject_unknown_population(evaluation_data, accessor):
     with pytest.raises(VisualizationDataError, match="Unknown population"):
         accessor(evaluation_data, "striker")
+
+
+def test_metrics_accessor(evaluation_data, results):
+    metrics = get_metrics(evaluation_data, "goalkeeper")
+    stored = results["populations"]["goalkeeper"]["metrics"]
+    assert set(metrics) == set(data_module.METRIC_KEYS)
+    assert metrics == {key: stored[key] for key in data_module.METRIC_KEYS}
+    assert metrics["underprediction_count"] + metrics["overprediction_count"] == GK_ROWS
+    metrics["mae"] = -1.0
+    assert get_metrics(evaluation_data, "goalkeeper")["mae"] != -1.0
+
+
+def test_metrics_accessor_rejects_unknown_population(evaluation_data):
+    with pytest.raises(VisualizationDataError, match="Unknown population"):
+        get_metrics(evaluation_data, "striker")
+
+
+def test_metrics_accessor_reports_missing_keys(artifact_paths, results):
+    del results["populations"]["outfield"]["metrics"]["mean_error"]
+    artifact_paths[0].write_text(json.dumps(results), encoding="utf-8")
+    data = load_evaluation_data(*artifact_paths)
+    with pytest.raises(VisualizationDataError, match="mean_error"):
+        get_metrics(data, "outfield")
+    assert get_metrics(data, "goalkeeper")["mae"] > 0
+
+
+def test_metrics_accessor_rejects_non_finite(artifact_paths, results):
+    results["populations"]["outfield"]["metrics"]["rmse"] = float("nan")
+    artifact_paths[0].write_text(json.dumps(results), encoding="utf-8")
+    with pytest.raises(VisualizationDataError, match="NaN or infinite"):
+        get_metrics(load_evaluation_data(*artifact_paths), "outfield")
+
+
+def test_run_summary_accessor(evaluation_data):
+    summary = get_run_summary(evaluation_data)
+
+    assert summary["schema_version"] == 1
+    assert summary["dataset_rows"] == 1000
+    assert summary["test_size"] == 0.15
+    assert summary["validation_size"] == 0.15
+    assert summary["split_random_state"] == 42
+    assert summary["populations"]["goalkeeper"] == {
+        "train_size": GK_ROWS * 5,
+        "validation_size": GK_ROWS,
+        "test_size": GK_ROWS,
+        "feature_count": 12,
+    }
+    assert summary["populations"]["outfield"]["feature_count"] == 13
+
+
+def test_run_summary_exposes_no_paths(evaluation_data):
+    rendered = json.dumps(get_run_summary(evaluation_data))
+    assert "does" not in rendered
+    assert "path" not in rendered.lower()
+    assert "csv" not in rendered.lower()
+
+
+def test_run_summary_returns_copy(evaluation_data):
+    summary = get_run_summary(evaluation_data)
+    summary["populations"]["goalkeeper"]["train_size"] = -1
+    assert get_run_summary(evaluation_data)["populations"]["goalkeeper"]["train_size"] == GK_ROWS * 5
+
+
+def test_run_summary_missing_sections(artifact_paths, results):
+    del results["evaluation"]["dataset_rows"]
+    artifact_paths[0].write_text(json.dumps(results), encoding="utf-8")
+    with pytest.raises(VisualizationDataError, match="dataset_rows"):
+        get_run_summary(load_evaluation_data(*artifact_paths))
+
+
+def test_run_summary_missing_population_fields(artifact_paths, results):
+    del results["populations"]["goalkeeper"]["checkpoint_metadata"]["input_feature_count"]
+    artifact_paths[0].write_text(json.dumps(results), encoding="utf-8")
+    with pytest.raises(VisualizationDataError, match="input_feature_count"):
+        get_run_summary(load_evaluation_data(*artifact_paths))
+
+
+def test_training_summary_reports_stored_values_only(evaluation_data, results):
+    summary = get_training_summary(evaluation_data, "goalkeeper")
+    stored = results["populations"]["goalkeeper"]["training_history"]
+    assert summary == {
+        "epochs_stored": len(stored["train_loss"]),
+        "best_epoch": stored["best_epoch"],
+        "best_validation_mae": stored["best_validation_mae"],
+        "stopped_early": stored["stopped_early"],
+    }
+
+
+@pytest.mark.parametrize("stored", [True, False, None])
+def test_training_summary_passes_early_stopping_flag_through(artifact_paths, results, stored):
+    results["populations"]["outfield"]["training_history"]["stopped_early"] = stored
+    artifact_paths[0].write_text(json.dumps(results), encoding="utf-8")
+    summary = get_training_summary(load_evaluation_data(*artifact_paths), "outfield")
+    assert summary["stopped_early"] is stored
+
+
+def test_training_summary_missing_flag_is_none(artifact_paths, results):
+    del results["populations"]["outfield"]["training_history"]["stopped_early"]
+    artifact_paths[0].write_text(json.dumps(results), encoding="utf-8")
+    assert get_training_summary(load_evaluation_data(*artifact_paths), "outfield")["stopped_early"] is None
+
+
+def test_training_summary_missing_keys_and_population(artifact_paths, results):
+    with pytest.raises(VisualizationDataError, match="Unknown population"):
+        get_training_summary(load_evaluation_data(*artifact_paths), "striker")
+    del results["populations"]["outfield"]["training_history"]["best_epoch"]
+    artifact_paths[0].write_text(json.dumps(results), encoding="utf-8")
+    with pytest.raises(VisualizationDataError, match="best_epoch"):
+        get_training_summary(load_evaluation_data(*artifact_paths), "outfield")
+
+
+def test_prediction_ranges(predictions):
+    ranges = get_prediction_ranges(predictions)
+    assert ranges["actual_overall"] == (55.0, 84.0)
+    low, high = ranges["absolute_error"]
+    assert low == 0.0
+    assert high >= predictions["absolute_error"].max()
+    assert high - predictions["absolute_error"].max() < 0.01 + 1e-9
+
+    gk = get_prediction_ranges(predictions, "goalkeeper")
+    gk_rows = predictions[predictions["population"] == "goalkeeper"]
+    assert gk["actual_overall"] == (gk_rows["actual_overall"].min(), gk_rows["actual_overall"].max())
+
+
+def test_prediction_ranges_errors(predictions):
+    with pytest.raises(VisualizationDataError, match="Unknown population"):
+        get_prediction_ranges(predictions, "striker")
+    with pytest.raises(VisualizationDataError, match="No prediction rows"):
+        get_prediction_ranges(predictions[predictions["population"] == "outfield"], "goalkeeper")
+    with pytest.raises(VisualizationDataError, match="missing columns"):
+        get_prediction_ranges(predictions.drop(columns=["absolute_error"]))
+
+
+# ------------------------------------------------------ filter_predictions
+
+
+def test_filter_defaults_return_all_rows_sorted_by_absolute_error(predictions):
+    rows = filter_predictions(predictions)
+
+    assert len(rows) == len(predictions)
+    assert list(rows.columns) == list(PREDICTION_COLUMNS)
+    errors = rows["absolute_error"].to_numpy()
+    assert (np.diff(errors) <= 0).all()
+    assert list(rows.index) == list(range(len(rows)))
+
+
+def test_filter_population(predictions):
+    rows = filter_predictions(predictions, "goalkeeper")
+    assert len(rows) == GK_ROWS
+    assert set(rows["population"]) == {"goalkeeper"}
+
+
+def test_filter_rating_range_is_inclusive(predictions):
+    rows = filter_predictions(predictions, rating_range=(60.0, 62.0))
+    assert len(rows) > 0
+    assert rows["actual_overall"].between(60.0, 62.0).all()
+    assert 60.0 in set(rows["actual_overall"]) and 62.0 in set(rows["actual_overall"])
+    expected = predictions["actual_overall"].between(60.0, 62.0).sum()
+    assert len(rows) == expected
+
+
+def test_filter_error_range(predictions):
+    rows = filter_predictions(predictions, error_range=(0.6, 0.9))
+    assert len(rows) > 0
+    assert rows["absolute_error"].between(0.6, 0.9).all()
+    assert len(rows) == predictions["absolute_error"].between(0.6, 0.9).sum()
+
+
+def test_filter_direction(predictions):
+    under = filter_predictions(predictions, direction="under")
+    over = filter_predictions(predictions, direction="over")
+    everything = filter_predictions(predictions, direction="all")
+
+    assert (under["error"] < 0).all() and len(under) > 0
+    assert (over["error"] > 0).all() and len(over) > 0
+    assert len(under) + len(over) == len(everything)
+
+
+def test_filter_direction_excludes_exact_zero_errors():
+    frame = build_prediction_frame([1, 2, 3], [60.0, 61.0, 62.0], [60.0, 62.0, 61.0], "outfield")
+    assert list(filter_predictions(frame, direction="under")["player_id"]) == [3]
+    assert list(filter_predictions(frame, direction="over")["player_id"]) == [2]
+    assert len(filter_predictions(frame, direction="all")) == 3
+
+
+@pytest.mark.parametrize("player_id", [1003, "1003", " 1003 "])
+def test_filter_player_id(predictions, player_id):
+    rows = filter_predictions(predictions, player_id=player_id)
+    assert list(rows["player_id"]) == [1003]
+
+
+@pytest.mark.parametrize("blank", [None, "", "   "])
+def test_filter_blank_player_id_is_no_filter(predictions, blank):
+    assert len(filter_predictions(predictions, player_id=blank)) == len(predictions)
+
+
+def test_filter_unknown_player_id_returns_empty_frame(predictions):
+    rows = filter_predictions(predictions, player_id=999999)
+    assert rows.empty
+    assert list(rows.columns) == list(PREDICTION_COLUMNS)
+
+
+@pytest.mark.parametrize("player_id", ["abc", "12.5", "1e3", 1.5, True, [1]])
+def test_filter_invalid_player_id(predictions, player_id):
+    with pytest.raises(VisualizationDataError, match="player_id"):
+        filter_predictions(predictions, player_id=player_id)  # type: ignore[arg-type]
+
+
+def test_filter_combines_conditions(predictions):
+    rows = filter_predictions(
+        predictions,
+        "outfield",
+        rating_range=(55.0, 70.0),
+        error_range=(0.0, 0.7),
+        direction="over",
+    )
+    assert set(rows["population"]) <= {"outfield"}
+    assert rows["actual_overall"].between(55.0, 70.0).all()
+    assert (rows["absolute_error"] <= 0.7).all()
+    assert (rows["error"] > 0).all()
+
+
+def test_filter_empty_result_is_valid(predictions):
+    rows = filter_predictions(predictions, rating_range=(0.0, 1.0))
+    assert rows.empty
+
+
+def test_filter_invalid_arguments(predictions):
+    with pytest.raises(VisualizationDataError, match="Unknown population"):
+        filter_predictions(predictions, "striker")
+    with pytest.raises(VisualizationDataError, match="Unknown direction"):
+        filter_predictions(predictions, direction="sideways")
+    with pytest.raises(VisualizationDataError, match="exceeds"):
+        filter_predictions(predictions, rating_range=(70.0, 60.0))
+    with pytest.raises(VisualizationDataError, match="pair"):
+        filter_predictions(predictions, error_range=(1.0, 2.0, 3.0))  # type: ignore[arg-type]
+    with pytest.raises(VisualizationDataError, match="NaN or infinite"):
+        filter_predictions(predictions, rating_range=(float("nan"), 70.0))
+    with pytest.raises(VisualizationDataError, match="missing columns"):
+        filter_predictions(predictions.drop(columns=["error"]))
+    with pytest.raises(VisualizationDataError, match="DataFrame"):
+        filter_predictions([1, 2])  # type: ignore[arg-type]
+
+
+def test_filter_does_not_mutate_input(predictions):
+    before = predictions.copy(deep=True)
+    filter_predictions(
+        predictions, "outfield", rating_range=(55.0, 80.0), error_range=(0.0, 1.0), direction="under"
+    )
+    pd.testing.assert_frame_equal(predictions, before)
+
+
+def test_filter_result_is_independent_copy(predictions):
+    rows = filter_predictions(predictions)
+    rows.loc[0, "actual_overall"] = -1.0
+    assert (predictions["actual_overall"] != -1.0).all()
 
 
 # --------------------------------------------------- actual vs predicted
@@ -857,11 +1139,16 @@ def test_public_api_is_explicit():
         [
             "EvaluationData",
             "VisualizationDataError",
+            "filter_predictions",
             "get_comparison",
             "get_largest_errors",
+            "get_metrics",
             "get_population_predictions",
+            "get_prediction_ranges",
             "get_rating_ranges",
+            "get_run_summary",
             "get_training_history",
+            "get_training_summary",
             "load_evaluation_data",
             "plot_actual_vs_predicted",
             "plot_error_distribution",
