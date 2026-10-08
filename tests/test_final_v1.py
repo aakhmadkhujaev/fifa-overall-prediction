@@ -4,7 +4,7 @@ import torch
 from torch import nn
 
 from src.experiments import final_v1
-from src.experiments.artifact import load_v1_checkpoint
+from src.experiments.artifact import load_v1_checkpoint, portable_path
 from src.experiments.experiment import ExperimentConfig, ExperimentResult, ExperimentRunner
 from src.preprocessing.preprocessor import Preprocessor
 from src.training.model import FIFAOverallModel
@@ -47,6 +47,35 @@ def test_final_orchestration_runs_once_per_population(monkeypatch, tmp_path):
     assert calls == [("goalkeeper", "fifa_overall_goalkeeper_v1.pt", 1), ("outfield", "fifa_overall_outfield_v1.pt", 1)]
     assert output["goalkeeper"]["validation"]["mae"] == 1.0
     assert output["outfield"]["test"]["rmse"] == 2.5
+
+
+def test_final_results_contain_no_machine_specific_paths(monkeypatch, tmp_path):
+    dataset = pd.DataFrame({"player_positions": ["GK", "ST"], "overall": [80, 70]})
+
+    class FakeRunner:
+        def __init__(self, config):
+            self.config = config
+
+        def run(self, population_data, *, checkpoint_path):
+            return ExperimentResult(
+                self.config.experiment_name, self.config.population, self.config,
+                1, 1.0, 1.0, 1.5, 0.2, 2.0, 2.5, 0.1, 0.01,
+                input_features=2, feature_names=("a", "b"),
+                split_sizes={"train_size": 1, "val_size": 1, "test_size": 1},
+                epochs_completed=1, stopped_early=False,
+            )
+
+    monkeypatch.setattr(final_v1, "load_dataset", lambda path: dataset)
+    monkeypatch.setattr(final_v1, "ExperimentRunner", FakeRunner)
+    results_path = tmp_path / "results.json"
+    output = final_v1.run_final_v1_experiment(
+        models_dir=tmp_path / "models", results_path=results_path
+    )
+
+    assert output["dataset"]["path"] == "data/raw/male_players (legacy).csv"
+    assert output["goalkeeper"]["checkpoint_path"] == "fifa_overall_goalkeeper_v1.pt"
+    assert output["outfield"]["checkpoint_path"] == "fifa_overall_outfield_v1.pt"
+    assert str(tmp_path) not in results_path.read_text(encoding="utf-8")
 
 
 def test_runner_constructs_self_contained_checkpoint_metadata(monkeypatch, tmp_path):

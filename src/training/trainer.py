@@ -66,7 +66,9 @@ def train_model(
 
     The model is restored to its best validation-MAE state before returning.
     If ``checkpoint_path`` is provided, the best state and training metadata are
-    saved there whenever a new best validation MAE is found. For deterministic
+    saved there whenever a new best validation MAE is found, and once more after
+    training so the saved history is complete (including ``epochs_completed`` and
+    ``stopped_early``) and matches the returned history. For deterministic
     model initialization, call ``set_seed`` before constructing the model;
     ``seed`` here controls training-time random operations.
     """
@@ -140,13 +142,31 @@ def train_model(
                 history['stopped_early'] = True
                 break
 
-    if best_state_dict is None or best_epoch is None:
+    if best_state_dict is None or best_epoch is None or best_optimizer_state is None:
         raise ValueError('Training did not produce a valid best model state.')
 
     model.load_state_dict(best_state_dict)
     history['best_epoch'] = best_epoch
     history['best_val_mae'] = best_val_mae
     history['best_state_dict'] = best_state_dict
+    # Checkpoints written during training only hold the history up to the then-best epoch.
+    # Rewrite once with the complete history so the saved record matches the returned one.
+    _save_checkpoint(
+        checkpoint_path=checkpoint_path,
+        model=model,
+        optimizer=optimizer,
+        history=history,
+        best_state_dict=best_state_dict,
+        best_optimizer_state=best_optimizer_state,
+        best_epoch=best_epoch,
+        best_val_mae=best_val_mae,
+        learning_rate=learning_rate,
+        epochs=epochs,
+        patience=patience,
+        device=resolved_device,
+        seed=seed,
+        checkpoint_metadata=checkpoint_metadata,
+    )
     return history
 
 

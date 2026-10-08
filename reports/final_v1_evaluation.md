@@ -22,8 +22,8 @@ Checkpoint: `models/fifa_overall_goalkeeper_v1.pt`
 - Overprediction: 1,274 rows (0.44938271604938274)
 - Zero-error rows: 0
 - Best epoch: 20
-- Saved history epochs: 20
-- Early stopping recorded in checkpoint: true
+- Epochs completed: 27 (maximum 30)
+- Early stopping triggered: true (patience 7, after epoch 27)
 
 ### Goalkeeper Rating Bands
 
@@ -50,8 +50,8 @@ Checkpoint: `models/fifa_overall_outfield_v1.pt`
 - Overprediction: 9,776 rows (0.4539375928677563)
 - Zero-error rows: 0
 - Best epoch: 27
-- Saved history epochs: 27
-- Early stopping recorded in checkpoint: false
+- Epochs completed: 30 (maximum 30)
+- Early stopping triggered: false (training ran to the epoch cap)
 
 ### Outfield Rating Bands
 
@@ -76,11 +76,14 @@ These are descriptive results for the two fixed populations and their fixed test
 
 ## Training History
 
-The evaluator preserves the history saved inside each checkpoint, including training loss, validation loss, validation MAE/RMSE/R2, best epoch, best validation MAE, saved history length, and early-stopping state. The saved history ends at the checkpoint history captured by the existing trainer; it is not reconstructed or fabricated during evaluation.
+The evaluator preserves the history stored inside each checkpoint: training loss, validation loss, validation MAE/RMSE/R2, best epoch, best validation MAE, epochs completed, and the early-stopping flag. The trainer now writes the checkpoint again after training finishes and the best model state has been restored, so a checkpoint produced by the current trainer holds every epoch that ran and matches the training result the trainer returns. The epochs-completed and early-stopping values listed above are the values recorded in the training record, `reports/generated/v1_final_results.json`.
+
+Checkpoints produced by the earlier trainer were saved only when validation MAE improved, so their history ended at the best epoch with the early-stopping flag unset. The first Milestone 8 evaluation was generated from such checkpoints and stored 20 goalkeeper epochs and 27 outfield epochs with `stopped_early` false, which understated the length of both training runs. Regenerating the V1 artifacts with the current trainer replaces that history, and `python -m src.evaluation.v1_validation` verifies that the regenerated history agrees with the training record and that predictive metrics are unchanged. The history is read from the checkpoint as stored; it is not reconstructed or fabricated during evaluation.
 
 ## Artifacts
 
 - `reports/generated/v1_final_evaluation.json`
+- `reports/generated/v1_final_results.json` (training record)
 - `reports/generated/v1_test_predictions.csv`
 - `models/fifa_overall_goalkeeper_v1.pt`
 - `models/fifa_overall_outfield_v1.pt`
