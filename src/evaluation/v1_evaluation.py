@@ -21,7 +21,7 @@ from src.evaluation.error_analysis import (
     largest_absolute_errors,
     summarize_rating_ranges,
 )
-from src.experiments.artifact import V1Artifact, load_v1_checkpoint
+from src.experiments.artifact import V1Artifact, load_v1_checkpoint, portable_path
 from src.features.feature_engineering import select_features, split_gk_and_outfield
 from src.preprocessing.preprocessor import split_with_target_handling
 from src.training.trainer import calculate_regression_metrics
@@ -182,7 +182,7 @@ def evaluate_population(
     }
     population_result = PopulationEvaluation(
         population=population,
-        checkpoint_path=str(checkpoint_path),
+        checkpoint_path=portable_path(checkpoint_path),
         split_sizes={
             "train_size": len(train_df),
             "validation_size": len(validation_df),
@@ -248,14 +248,14 @@ def evaluate_final_v1(
     output = {
         "schema_version": 1,
         "evaluation": {
-            "dataset_path": str(dataset_file),
+            "dataset_path": portable_path(dataset_file),
             "dataset_rows": len(dataset),
             "validation": validation,
             "test_size": SPLIT_TEST_SIZE,
             "validation_size": SPLIT_VAL_SIZE,
             "split_random_state": SPLIT_RANDOM_STATE,
             "inference_batch_size": INFERENCE_BATCH_SIZE,
-            "prediction_csv": str(prediction_output_path),
+            "prediction_csv": portable_path(prediction_output_path),
             "runtime_seconds": time.perf_counter() - started,
         },
         "populations": {

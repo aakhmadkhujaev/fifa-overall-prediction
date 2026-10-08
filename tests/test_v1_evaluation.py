@@ -15,7 +15,8 @@ from src.evaluation.error_analysis import (
 )
 from src.evaluation import v1_evaluation
 from src.evaluation.v1_evaluation import EvaluationError, evaluate_final_v1, evaluate_population
-from src.experiments.artifact import V1Artifact
+from src.experiments.artifact import PROJECT_ROOT, V1Artifact, load_v1_checkpoint, portable_path
+from src.experiments.experiment import ExperimentConfig, ExperimentRunner
 from src.features.feature_engineering import get_goalkeeper_features, get_outfield_features
 from src.preprocessing.preprocessor import (
     Preprocessor,
@@ -194,3 +195,71 @@ def test_evaluate_final_v1_writes_comparison_and_prediction_csv(monkeypatch, tmp
     assert len(predictions) == sum(result["metrics"]["test_samples"] for result in output["populations"].values())
     assert json.loads(results_path.read_text(encoding="utf-8"))["schema_version"] == 1
     assert np.isfinite(predictions[["actual_overall", "predicted_overall", "error", "absolute_error"]].to_numpy()).all()
+
+    evaluation = output["evaluation"]
+    assert evaluation["dataset_path"] == "data/raw/male_players (legacy).csv"
+    assert evaluation["prediction_csv"] == "predictions.csv"
+    assert output["populations"]["goalkeeper"]["checkpoint_path"] == "models/fifa_overall_goalkeeper_v1.pt"
+    assert output["populations"]["outfield"]["checkpoint_path"] == "models/fifa_overall_outfield_v1.pt"
+    assert str(tmp_path) not in results_path.read_text(encoding="utf-8")
+
+
+def test_portable_path_is_project_relative_inside_the_project():
+    assert portable_path(PROJECT_ROOT / "models" / "a.pt") == "models/a.pt"
+    assert portable_path(PROJECT_ROOT / "reports" / "generated" / "x.json") == "reports/generated/x.json"
+
+
+def test_portable_path_hides_directories_outside_the_project(tmp_path):
+    result = portable_path(tmp_path / "private" / "checkpoint.pt")
+    assert result == "checkpoint.pt"
+    assert str(tmp_path) not in result
+
+
+@pytest.mark.parametrize(
+    ("epochs", "patience", "learning_rate", "expected_epochs", "expected_stopped"),
+    [
+        (20, 2, 1e-12, 3, True),
+        # Best epoch (1) precedes the cap; patience is not exhausted, so all 4 epochs run.
+        (4, 5, 1e-12, 4, False),
+    ],
+    ids=["early_stopping", "epoch_cap"],
+)
+def test_trainer_checkpoint_and_evaluation_report_the_same_history(
+    tmp_path, epochs, patience, learning_rate, expected_epochs, expected_stopped
+):
+    """Real trainer -> saved checkpoint -> loaded checkpoint -> evaluation history."""
+    features = get_goalkeeper_features()
+    data = make_population_data(features, "goalkeeper", groups=60, records=2)
+    config = ExperimentConfig(
+        experiment_name="integration",
+        population="goalkeeper",
+        learning_rate=learning_rate,
+        batch_size=16,
+        epochs=epochs,
+        patience=patience,
+        hidden_size1=8,
+        hidden_size2=4,
+    )
+    checkpoint_path = tmp_path / "goalkeeper.pt"
+
+    result = ExperimentRunner(config).run(data, checkpoint_path=checkpoint_path)
+    artifact = load_v1_checkpoint(checkpoint_path)
+    evaluation, _ = evaluate_population(
+        data, population="goalkeeper", checkpoint_path=checkpoint_path
+    )
+
+    assert result.epochs_completed == expected_epochs
+    assert result.stopped_early is expected_stopped
+    saved = artifact.checkpoint["history"]
+    assert saved["epochs_completed"] == result.epochs_completed
+    assert saved["stopped_early"] is result.stopped_early
+    history = evaluation.training_history
+    assert history["epochs_completed"] == result.epochs_completed
+    assert history["stopped_early"] is result.stopped_early
+    assert history["best_epoch"] == result.best_epoch
+    assert history["best_validation_mae"] == result.best_validation_mae
+    for key in ("train_loss", "validation_loss", "validation_mae", "validation_rmse", "validation_r2"):
+        assert len(history[key]) == result.epochs_completed
+    assert history["validation_mae"][result.best_epoch - 1] == result.validation_mae
+    assert result.split_sizes is not None
+    assert evaluation.metrics["test_samples"] == result.split_sizes["test_size"]

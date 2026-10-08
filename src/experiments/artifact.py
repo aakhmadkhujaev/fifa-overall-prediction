@@ -12,10 +12,24 @@ import torch
 from src.preprocessing.preprocessor import Preprocessor
 from src.training.model import FIFAOverallModel
 
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
 SUPPORTED_CHECKPOINT_SCHEMA_VERSIONS = {2}
 VALID_POPULATIONS = {"goalkeeper", "outfield"}
 SUPPORTED_MODEL_CLASSES = {"FIFAOverallModel"}
 PathLike = Union[str, Path]
+
+
+def portable_path(path: PathLike) -> str:
+    """Return a machine-independent path string for generated artifacts.
+
+    Paths inside the project become project-relative POSIX paths. Paths outside it
+    are reduced to the file name so no local directory layout is recorded.
+    """
+    resolved = Path(path).resolve()
+    try:
+        return resolved.relative_to(PROJECT_ROOT).as_posix()
+    except ValueError:
+        return resolved.name
 
 
 @dataclass(frozen=True)

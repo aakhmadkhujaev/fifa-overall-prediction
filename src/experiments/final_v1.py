@@ -10,6 +10,7 @@ from typing import Any, Dict, Optional, Union
 
 from src.data.data_loader import load_dataset
 from src.data.data_validator import validate_dataset
+from src.experiments.artifact import portable_path
 from src.experiments.experiment import ExperimentConfig, ExperimentRunner
 from src.features.feature_engineering import split_gk_and_outfield
 
@@ -71,7 +72,7 @@ def _validate_dataset_or_raise(dataset: Any) -> Dict[str, Any]:
 def _result_record(result: Any, config: ExperimentConfig, checkpoint_path: Path) -> Dict[str, Any]:
     return {
         "configuration": asdict(config),
-        "checkpoint_path": str(checkpoint_path),
+        "checkpoint_path": portable_path(checkpoint_path),
         "feature_names": list(result.feature_names),
         "feature_count": result.input_features,
         "best_epoch": result.best_epoch,
@@ -131,7 +132,7 @@ def run_final_v1_experiment(
     output = {
         "schema_version": 1,
         "dataset": {
-            "path": str(dataset_file),
+            "path": portable_path(dataset_file),
             "rows": len(dataset),
             "population_rows": {
                 "goalkeeper": len(goalkeeper_data),

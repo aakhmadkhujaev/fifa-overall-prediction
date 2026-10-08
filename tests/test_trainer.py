@@ -330,3 +330,99 @@ def test_set_seed_makes_torch_random_values_reproducible():
     assert first[0] == second[0]
     assert first[1] == second[1]
     assert torch.equal(first[2], second[2])
+
+
+class ConstantBiasModel(nn.Module):
+    """Model whose validation MAE never improves after epoch 1 (the bias never moves)."""
+
+    def __init__(self):
+        super().__init__()
+        self.bias = nn.Parameter(torch.zeros(1))
+
+    def forward(self, features):
+        return self.bias.expand(features.shape[0], 1)
+
+
+def make_plateau_loaders():
+    train_loader = DataLoader(
+        TensorDataset(torch.zeros(8, 2), torch.zeros(8, 1)), batch_size=4
+    )
+    validation_loader = DataLoader(
+        TensorDataset(torch.zeros(4, 2), torch.ones(4, 1)), batch_size=4
+    )
+    return train_loader, validation_loader
+
+
+HISTORY_SERIES = ('train_loss', 'val_loss', 'val_mae', 'val_rmse', 'val_r2')
+
+
+@pytest.mark.parametrize(
+    ('epochs', 'patience', 'expected_epochs', 'expected_stopped'),
+    [
+        # Early stopping: best epoch 1, seven-style patience exhausted before the cap
+        # (the goalkeeper V1 pattern: best epoch < epochs completed < epoch cap).
+        (20, 2, 3, True),
+        # Epoch cap reached with patience still unexhausted
+        # (the outfield V1 pattern: epochs completed == cap, not stopped early).
+        (4, 5, 4, False),
+    ],
+    ids=['early_stopping', 'epoch_cap'],
+)
+def test_saved_checkpoint_history_matches_returned_history(
+    tmp_path, epochs, patience, expected_epochs, expected_stopped
+):
+    train_loader, validation_loader = make_plateau_loaders()
+    checkpoint_path = tmp_path / 'final.pt'
+
+    history = train_model(
+        ConstantBiasModel(),
+        train_loader,
+        validation_loader,
+        epochs=epochs,
+        patience=patience,
+        checkpoint_path=checkpoint_path,
+    )
+
+    assert history['epochs_completed'] == expected_epochs
+    assert history['stopped_early'] is expected_stopped
+    assert history['best_epoch'] == 1
+
+    checkpoint = torch.load(checkpoint_path, map_location='cpu', weights_only=True)
+    saved = checkpoint['history']
+    for key in HISTORY_SERIES:
+        assert len(saved[key]) == expected_epochs
+        assert saved[key] == history[key]
+    assert saved['epochs_completed'] == history['epochs_completed']
+    assert saved['stopped_early'] is history['stopped_early']
+    assert saved['best_epoch'] == history['best_epoch']
+    assert saved['best_val_mae'] == history['best_val_mae']
+    assert 'best_state_dict' not in saved
+    assert checkpoint['best_epoch'] == history['best_epoch']
+    assert checkpoint['best_val_mae'] == history['best_val_mae']
+    for name, parameter in checkpoint['model_state_dict'].items():
+        assert torch.equal(parameter, history['best_state_dict'][name])
+
+
+def test_checkpoint_saving_does_not_change_training_results(tmp_path):
+    def run(checkpoint_path):
+        train_loader, validation_loader = make_loaders()
+        torch.manual_seed(3)
+        model = FIFAOverallModel(input_size=2, hidden_size1=8, hidden_size2=4)
+        history = train_model(
+            model,
+            train_loader,
+            validation_loader,
+            epochs=5,
+            patience=3,
+            seed=11,
+            checkpoint_path=checkpoint_path,
+        )
+        return history, model
+
+    plain_history, plain_model = run(None)
+    saved_history, saved_model = run(tmp_path / 'with_checkpoint.pt')
+
+    for key in (*HISTORY_SERIES, 'epochs_completed', 'best_epoch', 'best_val_mae', 'stopped_early'):
+        assert plain_history[key] == saved_history[key]
+    for name, parameter in plain_model.state_dict().items():
+        assert torch.equal(parameter, saved_model.state_dict()[name])
