@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "dataset": {
-    "path": "C:\\Users\\aayub\\OneDrive\\\u0414\u043e\u043a\u0443\u043c\u0435\u043d\u0442\u044b\\design_and_vibecoding\\fifa_player_update_prediction\\data\\raw\\male_players (legacy).csv",
+    "path": "data/raw/male_players (legacy).csv",
     "rows": 161583,
     "population_rows": {
       "goalkeeper": 17970,
@@ -171,7 +171,7 @@
       "hidden_size1": 64,
       "hidden_size2": 32
     },
-    "checkpoint_path": "C:\\Users\\aayub\\OneDrive\\\u0414\u043e\u043a\u0443\u043c\u0435\u043d\u0442\u044b\\design_and_vibecoding\\fifa_player_update_prediction\\models\\fifa_overall_goalkeeper_v1.pt",
+    "checkpoint_path": "models/fifa_overall_goalkeeper_v1.pt",
     "feature_names": [
       "age",
       "height_cm",
@@ -199,8 +199,8 @@
       "rmse": 0.48369768261909485,
       "r2": 0.9957777825184166
     },
-    "training_duration_seconds": 11.704663900018204,
-    "runtime_seconds": 11.704663900018204,
+    "training_duration_seconds": 10.113238099962473,
+    "runtime_seconds": 10.113238099962473,
     "split_sizes": {
       "train_size": 12446,
       "val_size": 2689,
@@ -226,7 +226,7 @@
       "hidden_size1": 64,
       "hidden_size2": 32
     },
-    "checkpoint_path": "C:\\Users\\aayub\\OneDrive\\\u0414\u043e\u043a\u0443\u043c\u0435\u043d\u0442\u044b\\design_and_vibecoding\\fifa_player_update_prediction\\models\\fifa_overall_outfield_v1.pt",
+    "checkpoint_path": "models/fifa_overall_outfield_v1.pt",
     "feature_names": [
       "age",
       "height_cm",
@@ -277,8 +277,8 @@
       "rmse": 0.9712936282157898,
       "r2": 0.9802714977413416
     },
-    "training_duration_seconds": 52.20506209996529,
-    "runtime_seconds": 52.20506209996529,
+    "training_duration_seconds": 49.21543069998734,
+    "runtime_seconds": 49.21543069998734,
     "split_sizes": {
       "train_size": 100544,
       "val_size": 21533,
@@ -290,5 +290,5 @@
       "patience": 7
     }
   },
-  "runtime_seconds": 65.27050280000549
+  "runtime_seconds": 60.679558900068514
 }
